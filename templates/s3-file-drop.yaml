@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates a bucket for file drops in S3 that triggers a Lambda (e.g., to kick of a migration process).
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      RoleName: !Join ['', [ !Ref 'AWS::StackName', 'LambdaExecutionRole' ] ]
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+  HandlerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Join ["-", [ !Ref 'AWS::StackName', "Lambda"] ]
+      Code:
+        S3Bucket: "f12f301f-s3-file-drop-demo"
+        S3Key: "lambdas/file-drop-handler-lambda.zip"
+      Description: File Drop Handler
+      Handler: index.default
+      Role: !GetAtt [LambdaExecutionRole, 'Arn' ]
+      Runtime: nodejs8.10
+      Timeout: 10
+  AllowEventLambdaInvocation:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref HandlerLambda
+      Principal: 's3.amazonaws.com'
+
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Function: !GetAtt [HandlerLambda, Arn]
+
+Outputs:
+  LambdaName:
+    Description: The name of the Lambda that is triggered when files are uploaded to the bucket.
+    Value: !Ref HandlerLambda
+  LambdaMonitoringConsoleLink:
+    Description: Link to the console page where the Lambda is monitored.
+    Value: !Join ['', ['https://console.aws.amazon.com/lambda/home?region=', !Ref 'AWS::Region', '#/functions/', !Ref HandlerLambda, '?tab=monitoring']]
+  S3BucketName:
+    Description: The name of the bucket where you can upload files to start the workflow.
+    Value: !Ref Bucket
+  S3BucketConsoleLink:
+    Description: Link to the console page where the bucket is.
+    Value: !Join ['', ['https://s3.console.aws.amazon.com/s3/buckets/', !Ref Bucket, '/?region=', !Ref 'AWS::Region', '&tab=overview']]
